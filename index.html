@@ -1,0 +1,1843 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>📸 图片提取器（一键下载ZIP）</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+
+        body { background: #f1f5f9; padding: 16px; display: flex; justify-content: center; min-height: 100vh; margin: 0; }
+
+        .container { max-width: 1100px; width: 100%; background: white; border-radius: 28px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.06); }
+
+        h1 { margin: 0 0 4px 0; font-size: 24px; color: #0f172a; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+        .sub { font-size: 13px; font-weight: normal; color: #22c55e; background: #dcfce7; padding: 2px 14px; border-radius: 30px; }
+
+        .input-group { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; align-items: center; }
+
+        .input-group .url-wrapper { flex: 1; display: flex; align-items: center; background: white; border: 2px solid #e2e8f0; border-radius: 40px; padding: 0 6px 0 18px; transition: 0.2s; min-width: 200px; }
+
+        .input-group .url-wrapper:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+        .input-group .url-wrapper input { flex: 1; padding: 14px 0; border: none; outline: none; font-size: 16px; background: transparent; }
+        .input-group .url-wrapper textarea { flex: 1; padding: 12px 0; border: none; outline: none; font-size: 15px; background: transparent; resize: vertical; min-height: 76px; max-height: 170px; font-family: inherit; line-height: 1.6; }
+
+        .input-group .url-wrapper .clear-url-btn { background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; padding: 8px 12px; border-radius: 50%; transition: 0.2s; line-height: 1; }
+
+        .input-group .url-wrapper .clear-url-btn:hover { background: #f1f5f9; color: #ef4444; }
+
+        .btn-primary { background: #3b82f6; color: white; border: none; padding: 12px 28px; border-radius: 40px; font-weight: bold; font-size: 15px; cursor: pointer; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+
+        .btn-zip { background: #f59e0b; color: white; border: none; padding: 12px 28px; border-radius: 40px; font-weight: bold; font-size: 15px; cursor: pointer; box-shadow: 0 4px 12px rgba(245,158,11,0.3); }
+
+        .btn-zip:hover { background: #d97706; }
+
+        .btn-secondary { background: #e2e8f0; color: #1e293b; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+
+        .btn-secondary:hover { background: #cbd5e1; }
+
+        .btn-danger { background: #fee2e2; color: #dc2626; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+
+        .btn-danger:hover { background: #fecaca; }
+
+        .btn-copy { background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 40px; font-weight: 600; cursor: pointer; }
+
+        .btn-copy:hover { background: #7c3aed; }
+
+        .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; background: #f8fafc; padding: 16px; border-radius: 20px; border: 1px solid #e2e8f0; margin: 12px 0; }
+
+        .filter-item label { display: block; font-size: 11px; font-weight: 600; color: #475569; }
+
+        .filter-item input { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
+
+        .crawl-options { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; background: #f8fafc; padding: 12px 16px; border-radius: 40px; margin: 8px 0; }
+
+        .crawl-options label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+
+        .crawl-options input[type="number"] { width: 70px; padding: 4px 8px; border-radius: 20px; border: 1px solid #cbd5e1; }
+
+        .crawl-options select { padding: 4px 8px; border-radius: 20px; border: 1px solid #cbd5e1; background: white; }
+
+        .page-range-inputs { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+        .stats { background: #eff6ff; padding: 10px 16px; border-radius: 40px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; border: 1px solid #bfdbfe; margin: 12px 0; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; max-height: 500px; overflow-y: auto; }
+
+        .card { background: white; border-radius: 14px; overflow: hidden; border: 1px solid #e2e8f0; }
+
+        .card img { width: 100%; height: 120px; object-fit: cover; background: #e2e8f0; }
+
+        .card-info { padding: 8px 10px; font-size: 12px; }
+
+        .card-info .dim { color: #3b82f6; font-weight: 600; }
+
+        .group-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+
+        .group-tag { background: #e2e8f0; padding: 4px 14px; border-radius: 30px; font-size: 13px; cursor: pointer; user-select: none; border: 2px solid transparent; transition: all .15s; }
+
+        .group-tag:hover { background: #dbeafe; }
+
+        .group-tag.selected { background: #3b82f6; border-color: #2563eb; color: #fff; }
+
+        .group-tag.selected strong { color: #fff; }
+
+        .group-tag strong { color: #0f172a; }
+
+        .log-area { background: #0f172a; color: #a5f3fc; padding: 12px 16px; border-radius: 14px; font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto; margin-top: 14px; white-space: pre-wrap; line-height: 1.6; }
+
+        .hidden { display: none !important; }
+
+        .toast { position: fixed; top: 30px; left: 50%; transform: translateX(-50%); background: #22c55e; color: white; padding: 18px 32px; border-radius: 60px; font-size: 20px; font-weight: bold; box-shadow: 0 12px 40px rgba(34,197,94,0.4); z-index: 9999; opacity: 0; transition: opacity 0.5s ease; pointer-events: none; text-align: center; max-width: 90%; border: 2px solid rgba(255,255,255,0.3); }
+
+        .toast.show { opacity: 1; pointer-events: auto; }
+
+        .toast .sub-msg { font-size: 14px; font-weight: normal; opacity: 0.9; margin-top: 4px; }
+
+        .toast .close-toast { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 18px; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; margin-left: 16px; transition: 0.2s; }
+
+        .toast .close-toast:hover { background: rgba(255,255,255,0.4); }
+
+        .toast.error { background: #ef4444; box-shadow: 0 12px 40px rgba(239,68,68,0.4); }
+
+        .btn-group { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+
+        @media (max-width: 600px) { .toast { font-size: 16px; padding: 14px 20px; } .toast .sub-msg { font-size: 12px; } }
+
+    </style>
+
+<script src="https://beacon.cdn.qq.com/sdk/4.5.9/beacon_web.min.js"></script>
+<script>
+(function(){
+  try{
+    var beacon=new BeaconAction({
+      appkey:'0WEB06U85YBSLJNL',
+      versionCode:'1.0.0',
+      channelID:'share',
+      delay:1000,
+      sessionDuration:30*60*1000,
+      isOversea:false,
+      needReportRqdEvent:false
+    });
+    beacon.onDirectUserAction('preview_page_view',{
+      'url':location.href,
+      'referrer':document.referrer,
+      'title':document.title,
+      'sandbox_id':'ddf937281742431d9877f53f0ef0f0c7'
+    });
+  }catch(e){}
+})();
+</script></head>
+
+<body>
+
+<div class="container">
+
+    <div id="toast" class="toast"><span id="toastMessage">✅ 保存成功！</span><div id="toastSub" class="sub-msg"></div><button class="close-toast" id="toastCloseBtn">✕</button></div>
+
+    <h1>📸 图片提取器 <span class="sub">一键下载ZIP</span></h1>
+
+    <p style="color:#64748b;margin:4px 0 8px 0;font-size:14px;">提取符合尺寸/大小的图片，一键打包下载ZIP（无需选择文件夹）。</p>
+
+    
+
+    <div class="input-group">
+
+        <div class="url-wrapper">
+
+            <textarea id="urlInput" rows="3" placeholder="每行输入一个网址，可一次批量粘贴多个&#10;如：https://example.com/page-1.html&#10;https://example.com/page-2.html"></textarea>
+
+            <button class="clear-url-btn" id="clearUrlBtn">✕</button>
+
+        </div>
+
+        <button class="btn-danger" id="clearUrlBtn2">清空网址</button>
+
+        <button class="btn-primary" id="extractBtn">🔍 提取图片</button>
+
+        <button class="btn-secondary" id="clearBtn">🗑️ 清空结果</button>
+
+    </div>
+
+    <div class="crawl-options">
+
+        <label>抓取模式：
+
+            <select id="crawlMode">
+
+                <option value="auto">自动（直到404）</option>
+
+                <option value="manual">手动（指定范围）</option>
+
+                <option value="list">列表页批量（封面→详情）</option>
+
+            </select>
+
+        </label>
+
+        <span id="pageRangeArea" style="display:none;" class="page-range-inputs">
+
+            <label>起始页 <input type="number" id="startPage" value="1" min="1"></label>
+
+            <label>结束页 <input type="number" id="endPage" value="3" min="1"></label>
+
+        </span>
+
+        <span id="listHint" style="display:none;font-size:12px;color:#64748b;">📚 输入包含封面的列表页网址，自动逐个抓取每个封面进入的详情页图片</span>
+
+        <label>延迟间隔 <input type="number" id="delayMs" value="500" min="0" max="2000"> 毫秒</label>
+        <label>每 <input type="number" id="zipEveryN" value="5" min="1" max="100" title="每处理完 N 个网址自动打包一个ZIP"> 个网址打包1个ZIP</label>
+
+    </div>
+
+    <div class="filters" id="filterGroup">
+
+        <div class="filter-item"><label>宽≥</label><input type="number" id="wMin" data-key="wMin" value="0" placeholder="不限"></div>
+
+        <div class="filter-item"><label>宽≤</label><input type="number" id="wMax" data-key="wMax" value="99999"></div>
+
+        <div class="filter-item"><label>高≥</label><input type="number" id="hMin" data-key="hMin" value="0" placeholder="不限"></div>
+
+        <div class="filter-item"><label>高≤</label><input type="number" id="hMax" data-key="hMax" value="99999"></div>
+
+        <div class="filter-item"><label>最小KB</label><input type="number" id="sMin" data-key="sMin" value="0" placeholder="不限"></div>
+
+        <div class="filter-item"><label>最大KB</label><input type="number" id="sMax" data-key="sMax" value="30000"></div>
+
+    </div>
+
+    <div id="crawlStatus" class="status-bar hidden">
+
+        <span>📄 正在抓取：<strong id="currentPageDisplay">-</strong></span>
+
+        <span>✅ 累计符合：<strong id="cumulativeCount">0</strong> 张</span>
+        <span>🌐 网址进度：<strong id="urlProgress">0/0</strong></span>
+        <span>📦 已生成ZIP：<strong id="zipCountDisplay">0</strong> 个</span>
+
+        <span id="statusMessage" style="color:#64748b;">就绪</span>
+
+        <button class="btn-danger" id="stopBtn" style="margin-left:auto;padding:6px 16px;font-size:12px;">⏹ 停止</button>
+
+    </div>
+
+    <div class="btn-group">
+
+        <button class="btn-zip" id="zipBtn" style="display:none;">📦 下载全部</button>
+
+        <button class="btn-zip" id="zipSelBtn" style="display:none;">📦 下载所选规格</button>
+
+        <button class="btn-copy" id="copyBtn" style="display:none;">📋 复制图片链接</button>
+
+    </div>
+
+    <div id="statsArea" class="stats hidden">
+
+        <span>✅ 符合规格：<strong id="countDisplay">0</strong> 张</span>
+
+        <span>📐 筛选范围：<span id="rangeDisplay"></span></span>
+
+        <span id="groupSummary" class="group-summary"></span>
+
+    </div>
+
+    <div id="resultGrid" class="grid"></div>
+
+    <div id="saveProgress" class="hidden"></div>
+
+    <div id="logArea" class="log-area">📌 就绪。输入网址，点击"提取图片"，然后"下载ZIP压缩包"。</div>
+
+</div>
+
+<script>
+
+    (function() {
+
+        // ---------- API 后端（CloudBase 云函数） ----------
+        const API_BASE = '/api';
+
+        // ---------- DOM ----------
+
+        const urlInput = document.getElementById('urlInput');
+
+        const clearUrlBtn = document.getElementById('clearUrlBtn');
+
+        const clearUrlBtn2 = document.getElementById('clearUrlBtn2');
+
+        const extractBtn = document.getElementById('extractBtn');
+
+        const clearBtn = document.getElementById('clearBtn');
+
+        const zipBtn = document.getElementById('zipBtn');
+
+        const zipSelBtn = document.getElementById('zipSelBtn');
+
+        const copyBtn = document.getElementById('copyBtn');
+
+        const resultGrid = document.getElementById('resultGrid');
+
+        const logArea = document.getElementById('logArea');
+
+        const statsArea = document.getElementById('statsArea');
+
+        const countDisplay = document.getElementById('countDisplay');
+
+        const rangeDisplay = document.getElementById('rangeDisplay');
+
+        const groupSummary = document.getElementById('groupSummary');
+
+        const saveProgress = document.getElementById('saveProgress');
+
+        const crawlStatus = document.getElementById('crawlStatus');
+
+        const currentPageDisplay = document.getElementById('currentPageDisplay');
+
+        const cumulativeCount = document.getElementById('cumulativeCount');
+
+        const statusMessage = document.getElementById('statusMessage');
+
+        const stopBtn = document.getElementById('stopBtn');
+
+        let stopRequested = false;
+
+        const delayMsInput = document.getElementById('delayMs');
+
+        const crawlModeSelect = document.getElementById('crawlMode');
+
+        const pageRangeArea = document.getElementById('pageRangeArea');
+
+        const listHint = document.getElementById('listHint');
+
+        const startPageInput = document.getElementById('startPage');
+
+        const endPageInput = document.getElementById('endPage');
+        const zipEveryNInput = document.getElementById('zipEveryN');
+        const urlProgress = document.getElementById('urlProgress');
+        const zipCountDisplay = document.getElementById('zipCountDisplay');
+
+        // Toast
+
+        const toast = document.getElementById('toast');
+
+        const toastMessage = document.getElementById('toastMessage');
+
+        const toastSub = document.getElementById('toastSub');
+
+        const toastCloseBtn = document.getElementById('toastCloseBtn');
+
+        let toastTimer = null;
+
+        function showToast(mainMsg, subMsg, duration = 5000, isError = false) {
+
+            toast.classList.remove('error');
+
+            if (isError) toast.classList.add('error');
+
+            toastMessage.textContent = mainMsg;
+
+            toastSub.textContent = subMsg || '';
+
+            toast.classList.add('show');
+
+            if (toastTimer) clearTimeout(toastTimer);
+
+            if (duration > 0) toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+
+        }
+
+        toastCloseBtn.addEventListener('click', () => { toast.classList.remove('show'); clearTimeout(toastTimer); });
+
+        let allExtractedImages = [];
+
+        let selectedDims = new Set();  // 选中的尺寸规格（如 "1300x1837"）
+
+        let isCrawling = false;
+
+        stopBtn.addEventListener('click', () => {
+
+            if (!isCrawling) return;
+
+            stopRequested = true;
+
+            stopBtn.disabled = true;
+
+            stopBtn.textContent = '停止中…';
+
+            statusMessage.textContent = '⏹ 正在停止…';
+
+            log('⏹ 用户请求停止');
+
+        });
+
+        // ---------- 偏好 ----------
+
+        const PREF_KEY = 'zipExtractorPrefs';
+
+        function loadPrefs() {
+
+            try {
+
+                const raw = localStorage.getItem(PREF_KEY);
+
+                if (!raw) return;
+
+                const prefs = JSON.parse(raw);
+
+                document.querySelectorAll('#filterGroup input[data-key]').forEach(el => {
+
+                    const key = el.dataset.key;
+
+                    if (prefs[key] !== undefined) el.value = prefs[key];
+
+                });
+
+                if (prefs.lastUrl) urlInput.value = prefs.lastUrl;
+
+                if (prefs.delayMs) delayMsInput.value = prefs.delayMs;
+
+                if (prefs.crawlMode) crawlModeSelect.value = prefs.crawlMode;
+
+                if (prefs.startPage) startPageInput.value = prefs.startPage;
+
+                if (prefs.endPage) endPageInput.value = prefs.endPage;
+                if (prefs.zipEveryN) zipEveryNInput.value = prefs.zipEveryN;
+
+            } catch(e) {}
+
+        }
+
+        function savePrefs() {
+
+            const prefs = {};
+
+            document.querySelectorAll('#filterGroup input[data-key]').forEach(el => {
+
+                prefs[el.dataset.key] = el.value;
+
+            });
+
+            prefs.lastUrl = urlInput.value.trim();
+
+            prefs.delayMs = delayMsInput.value;
+
+            prefs.crawlMode = crawlModeSelect.value;
+
+            prefs.startPage = startPageInput.value;
+
+            prefs.endPage = endPageInput.value;
+            prefs.zipEveryN = zipEveryNInput.value;
+
+            localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+
+        }
+
+        document.querySelectorAll('#filterGroup input').forEach(el => el.addEventListener('input', savePrefs));
+
+        urlInput.addEventListener('change', savePrefs);
+
+        delayMsInput.addEventListener('change', savePrefs);
+
+        crawlModeSelect.addEventListener('change', function() {
+
+            const v = this.value;
+
+            pageRangeArea.style.display = v === 'manual' ? 'flex' : 'none';
+
+            listHint.style.display = v === 'list' ? 'inline' : 'none';
+
+            savePrefs();
+
+        });
+
+        startPageInput.addEventListener('change', savePrefs);
+
+        endPageInput.addEventListener('change', savePrefs);
+        zipEveryNInput.addEventListener('change', savePrefs);
+
+        loadPrefs();
+
+        if (crawlModeSelect.value === 'manual') pageRangeArea.style.display = 'flex';
+
+        if (crawlModeSelect.value === 'list') listHint.style.display = 'inline';
+
+        // ---------- 清空 ----------
+
+        function clearUrlAndResults() {
+
+            urlInput.value = '';
+
+            savePrefs();
+
+            clearResults();
+
+            log('🗑️ 已清空网址和结果');
+
+            urlInput.focus();
+
+        }
+
+        clearUrlBtn.addEventListener('click', clearUrlAndResults);
+
+        clearUrlBtn2.addEventListener('click', clearUrlAndResults);
+
+        function log(msg, isError = false) {
+
+            const time = new Date().toLocaleTimeString();
+
+            logArea.textContent += `\n[${time}] ${msg}`;
+
+            logArea.scrollTop = logArea.scrollHeight;
+
+            if (isError) console.error(msg);
+
+        }
+
+        function getFilters() {
+
+            return {
+
+                wMin: parseInt(document.getElementById('wMin').value) || 0,
+
+                wMax: parseInt(document.getElementById('wMax').value) || 99999,
+
+                hMin: parseInt(document.getElementById('hMin').value) || 0,
+
+                hMax: parseInt(document.getElementById('hMax').value) || 99999,
+
+                sMin: parseFloat(document.getElementById('sMin').value) || 0,
+
+                sMax: parseFloat(document.getElementById('sMax').value) || 99999
+
+            };
+
+        }
+
+        function clearResults() {
+
+            resultGrid.innerHTML = '';
+
+            statsArea.classList.add('hidden');
+
+            zipBtn.style.display = 'none';
+
+            zipSelBtn.style.display = 'none';
+
+            copyBtn.style.display = 'none';
+
+            saveProgress.classList.add('hidden');
+
+            allExtractedImages = [];
+
+            selectedDims.clear();
+
+            groupSummary.innerHTML = '';
+
+            crawlStatus.classList.add('hidden');
+
+            toast.classList.remove('show');
+
+        }
+
+        function displayImages(images) {
+
+            if (!images || images.length === 0) {
+
+                resultGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#94a3b8;">没有找到符合规格的图片</p>';
+
+                statsArea.classList.remove('hidden');
+
+                countDisplay.textContent = '0';
+
+                groupSummary.innerHTML = '';
+
+                zipBtn.style.display = 'none';
+
+                zipSelBtn.style.display = 'none';
+
+                copyBtn.style.display = 'none';
+
+                return;
+
+            }
+
+            const groups = {};
+
+            images.forEach(img => {
+
+                const key = `${img.width}x${img.height}`;
+
+                if (!groups[key]) groups[key] = [];
+
+                groups[key].push(img);
+
+            });
+
+            const dims = Object.keys(groups).sort();
+
+            let groupHtml = '';
+
+            dims.forEach(dim => {
+
+                const count = groups[dim].length;
+
+                const sel = selectedDims.has(dim);
+
+                groupHtml += `<span class="group-tag${sel ? ' selected' : ''}" data-dim="${dim}" title="${sel ? '点击取消选择该规格' : '点击选择该规格下载'}">${sel ? '✓ ' : ''}<strong>${dim}</strong> ×${count}张</span>`;
+
+            });
+
+            groupSummary.innerHTML = groupHtml;
+
+            // 点击尺寸规格标签：选中 / 取消选中
+            groupSummary.onclick = (e) => {
+
+                const tag = e.target.closest('.group-tag');
+
+                if (!tag) return;
+
+                const dim = tag.dataset.dim;
+
+                if (selectedDims.has(dim)) selectedDims.delete(dim);
+
+                else selectedDims.add(dim);
+
+                displayImages(images);
+
+            };
+
+            let html = '';
+
+            images.forEach(img => {
+
+                html += `
+
+                    <div class="card">
+
+                        <img src="${API_BASE}/thumb?url=${encodeURIComponent(img.url)}" alt="${img.filename}" loading="lazy" onerror="this.style.display='none'">
+
+                        <div class="card-info">
+
+                            <div class="dim">${img.width}×${img.height}</div>
+
+                            <div style="font-size:11px;color:#475569;">📦 ${img.sizeKB} KB</div>
+
+                            <div style="font-size:10px;color:#94a3b8;word-break:break-all;">${img.filename || '未知'}</div>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            });
+
+            resultGrid.innerHTML = html;
+
+            const f = getFilters();
+
+            statsArea.classList.remove('hidden');
+
+            countDisplay.textContent = images.length;
+
+            rangeDisplay.textContent = `${f.wMin}~${f.wMax}×${f.hMin}~${f.hMax}`;
+
+            zipBtn.style.display = 'inline-block';
+
+            zipSelBtn.style.display = 'inline-block';
+
+            copyBtn.style.display = 'inline-block';
+
+            allExtractedImages = images;
+
+            updateDownloadButtons(images);
+
+            log(`✅ 提取完成，共 ${images.length} 张，${dims.length} 种尺寸`);
+
+        }
+
+        // 更新下载按钮文案与可用状态
+        function updateDownloadButtons(images) {
+
+            const all = images || allExtractedImages;
+
+            zipBtn.textContent = `📦 下载全部（${all.length} 张）`;
+
+            let selCount = 0;
+
+            all.forEach(img => { if (selectedDims.has(`${img.width}x${img.height}`)) selCount++; });
+
+            zipSelBtn.textContent = `📦 下载所选规格（${selCount} 张）`;
+
+            zipSelBtn.disabled = selCount === 0;
+
+            zipSelBtn.style.opacity = selCount === 0 ? 0.5 : 1;
+
+        }
+
+        // ---------- 核心提取 ----------
+
+        async function extractFromHTML(htmlContent, baseUrl) {
+
+            const filters = getFilters();
+
+            const parser = new DOMParser();
+
+            const doc = parser.parseFromString(htmlContent, 'text/html');
+
+            const imgElements = doc.querySelectorAll('img');
+
+            const imgUrls = [];
+
+            const lazyAttrs = ['data-src', 'data-original', 'data-lazy-src', 'data-lazy', 'data-url', 'data-echo', 'data-original-src'];
+
+            imgElements.forEach(img => {
+
+                let src = img.getAttribute('src');
+
+                if (!src || src.startsWith('data:image')) {
+
+                    // 懒加载属性兜底
+                    for (const attr of lazyAttrs) {
+
+                        const v = img.getAttribute(attr);
+
+                        if (v && !v.startsWith('data:image')) { src = v; break; }
+
+                    }
+
+                }
+
+                if (!src || src.startsWith('data:image')) return;
+
+                try {
+
+                    const absoluteUrl = new URL(src, baseUrl).href;
+
+                    imgUrls.push(absoluteUrl);
+
+                } catch(e) {}
+
+            });
+
+            // CSS background-image（内联 style + <style> 标签）
+            doc.querySelectorAll('*').forEach(el => {
+
+                const style = el.getAttribute('style');
+
+                if (style) {
+
+                    const m = style.match(/url\(\s*(['\"]?)(.*?)\1\s*\)/i);
+
+                    if (m && m[2] && !m[2].startsWith('data:')) {
+
+                        try { imgUrls.push(new URL(m[2], baseUrl).href); } catch(e) {}
+
+                    }
+
+                }
+
+            });
+
+            doc.querySelectorAll('style').forEach(st => {
+
+                const text = st.textContent || '';
+
+                const re = /url\(\s*(['\"]?)(.*?)\1\s*\)/gi;
+
+                let m;
+
+                while ((m = re.exec(text)) !== null) {
+
+                    const u = m[2];
+
+                    if (u && !u.startsWith('data:') && !u.startsWith('#')) {
+
+                        try { imgUrls.push(new URL(u, baseUrl).href); } catch(e) {}
+
+                    }
+
+                }
+
+            });
+
+            // meta og:image
+            doc.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach(meta => {
+
+                const c = meta.getAttribute('content');
+
+                if (c && !c.startsWith('data:')) {
+
+                    try { imgUrls.push(new URL(c, baseUrl).href); } catch(e) {}
+
+                }
+
+            });
+
+            const uniqueUrls = [...new Set(imgUrls)];
+
+            const results = [];
+
+            const total = uniqueUrls.length;
+
+            let processed = 0;
+
+            const batchSize = 10;
+
+            for (let i = 0; i < uniqueUrls.length; i += batchSize) {
+
+                const batch = uniqueUrls.slice(i, i + batchSize);
+
+                const promises = batch.map(async (url) => {
+
+                    try {
+
+                        const resp = await fetch(API_BASE + '/download/direct', {
+
+                            method: 'POST',
+
+                            headers: { 'Content-Type': 'application/json' },
+
+                            body: JSON.stringify({ url: url })
+
+                        });
+
+                        if (!resp.ok) return null;
+
+                        const blob = await resp.blob();
+
+                        const sizeKB = blob.size / 1024;
+
+                        if (sizeKB < filters.sMin || sizeKB > filters.sMax) return null;
+
+                        const imgObj = await new Promise((res, rej) => {
+
+                            const img = new Image();
+
+                            img.onload = () => res(img);
+
+                            img.onerror = () => rej();
+
+                            img.src = URL.createObjectURL(blob);
+
+                        });
+
+                        const w = imgObj.naturalWidth, h = imgObj.naturalHeight;
+
+                        URL.revokeObjectURL(imgObj.src);
+
+                        if (w >= filters.wMin && w <= filters.wMax && h >= filters.hMin && h <= filters.hMax) {
+
+                            const filename = url.split('/').pop().split('?')[0] || 'image.jpg';
+
+                            return {
+
+                                url, src: url, filename, width: w, height: h,
+
+                                sizeKB: Math.round(sizeKB * 10) / 10,
+
+                                blob: blob
+
+                            };
+
+                        }
+
+                        return null;
+
+                    } catch(e) { return null; }
+
+                });
+
+                const batchResults = await Promise.all(promises);
+
+                for (const r of batchResults) if (r) results.push(r);
+
+                processed += batch.length;
+
+            }
+
+            return results;
+
+        }
+
+        async function fetchHTMLWithStatus(url) {
+
+            // 优先使用本站后端代理（服务端抓取，绕 CORS）
+            try {
+
+                const resp = await fetch(API_BASE + '/fetch_html', {
+
+                    method: 'POST',
+
+                    headers: { 'Content-Type': 'application/json' },
+
+                    body: JSON.stringify({ url: url }),
+
+                    signal: AbortSignal.timeout(45000)
+
+                });
+
+                if (resp.ok) {
+
+                    const d = await resp.json();
+
+                    if (d.status === 404) return { status: 404, html: null };
+
+                    if (d.status === 200 && d.html && d.html.length > 50) {
+
+                        return { status: 200, html: d.html };
+
+                    }
+
+                }
+
+            } catch(e) {}
+
+            // 回退：公共 CORS 代理列表
+            const proxyList = [
+
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+
+                `https://cors-anywhere.herokuapp.com/${url}`,
+
+                `https://proxy.cors.sh/${url}`
+
+            ];
+
+            for (const proxy of proxyList) {
+
+                try {
+
+                    const resp = await fetch(proxy, {
+
+                        headers: { 'User-Agent': 'Mozilla/5.0' },
+
+                        signal: AbortSignal.timeout(10000)
+
+                    });
+
+                    if (resp.status === 404) return { status: 404, html: null };
+
+                    if (resp.ok) {
+
+                        const text = await resp.text();
+
+                        if (text.length > 50 && !text.includes('error')) {
+
+                            return { status: 200, html: text };
+
+                        }
+
+                    }
+
+                } catch(e) {}
+
+            }
+
+            return { status: 0, html: null, error: true };
+
+        }
+
+        function cleanBaseUrl(url) { return url.replace(/\/\d+\/?$/, '') || url; }
+
+        // 常见无关域名黑名单（防止把导航/社交外链当封面）
+        const LINK_BLACKLIST = ['facebook.com','twitter.com','x.com','instagram.com','youtube.com','t.co','baidu.com','weibo.com','google.com','linkedin.com','pinterest.com','reddit.com','telegram.me','t.me','whatsapp.com','qq.com','weixin.qq.com','microsoft.com','apple.com','amazon.com','adobe.com','example.com','example.org','w3.org','github.com','medium.com'];
+
+        // 从列表页 HTML 中提取「封面图片 → 详情页」链接（a 内包含 img）
+        function extractCoverLinks(html, baseUrl) {
+
+            const parser = new DOMParser();
+
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const links = [];
+
+            const seen = new Set();
+
+            doc.querySelectorAll('a[href]').forEach(a => {
+
+                const img = a.querySelector('img');
+
+                if (!img) return;
+
+                let src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-original') || '';
+
+                let href = a.getAttribute('href') || '';
+
+                if (!src || src.startsWith('data:') || !href || href.startsWith('javascript:') || href.startsWith('#')) return;
+
+                try {
+
+                    const absHref = new URL(href, baseUrl).href;
+
+                    const host = new URL(absHref).hostname.toLowerCase();
+
+                    if (LINK_BLACKLIST.some(b => host === b || host.endsWith('.' + b))) return;  // 排除社交/导航外链
+
+                    if (seen.has(absHref)) return;
+
+                    seen.add(absHref);
+
+                    links.push({ imgUrl: new URL(src, baseUrl).href, pageUrl: absHref, host: host });
+
+                } catch(e) {}
+
+            });
+
+            if (links.length === 0) return [];
+
+            // 主流域名过滤：列表页中「出现最多的域名」才是真实内容站，
+            // 其余站外链接（导航 logo、相关站点、社交图标）一律剔除，避免被当作封面深挖
+            const hostCount = {};
+
+            for (const c of links) hostCount[c.host] = (hostCount[c.host] || 0) + 1;
+
+            let topHost = links[0].host, topCount = 0;
+
+            for (const h of Object.keys(hostCount)) {
+
+                if (hostCount[h] > topCount) { topHost = h; topCount = hostCount[h]; }
+
+            }
+
+            if (topCount < 2) return links;  // 只有一个域名时不需过滤
+
+            const filtered = links.filter(c => c.host === topHost);
+
+            return filtered;
+
+        }
+
+        // 从 JS 跳转页中提取可用的镜像域名
+        function extractMirrorHosts(html) {
+
+            const hosts = [];
+
+            const m1 = html.match(/sites\s*=\s*\[([^\]]+)\]/);
+
+            if (m1) {
+
+                const urls = m1[1].match(/https?:\/\/[^'"\s]+/g) || [];
+
+                urls.forEach(u => { try { hosts.push(new URL(u).hostname); } catch(e){} });
+
+            }
+
+            const m2 = html.match(/location\.href\s*=\s*['"](https?:\/\/[^'"]+)['"]/);
+
+            if (m2) { try { hosts.push(new URL(m2[1]).hostname); } catch(e){} }
+
+            return [...new Set(hosts)];
+
+        }
+
+        function replaceHost(url, host) {
+
+            try { const u = new URL(url); u.hostname = host; return u.href; } catch(e) { return url; }
+
+        }
+
+        // 判断页面是否真的包含内容（有 img 或有效 title）
+        function hasContent(html) {
+
+            if (!html || html.length < 1000) return false;
+
+            if (/<title>302\s*Found/i.test(html)) return false;
+
+            return /<img[\s>]/i.test(html) || /<title>[^<]+<\/title>/i.test(html);
+
+        }
+
+        // 带重试的页面抓取（网络抖动时自动重试，减少漏抓）
+        async function fetchWithRetry(url, retries) {
+
+            const n = retries || 2;
+
+            let last = null;
+
+            for (let i = 0; i <= n; i++) {
+
+                const r = await fetchHTMLWithStatus(url);
+
+                if (r.status === 200 && r.html) return r;
+
+                last = r;
+
+                await new Promise(res => setTimeout(res, 800 * (i + 1)));
+
+            }
+
+            return last;
+
+        }
+
+        // 智能抓取详情页：直连无内容时自动尝试镜像域名（站点防抓取 JS 跳转的兜底）
+        let mirrorHostCache = '';  // 记住可用的镜像域名，后续详情页直接走镜像，避免每次访问慢速源站
+
+        async function fetchDetailSmart(url) {
+
+            // 已有缓存镜像 → 直接替换抓取
+            if (mirrorHostCache) {
+
+                const alt = replaceHost(url, mirrorHostCache);
+
+                if (alt !== url) {
+
+                    const r0 = await fetchWithRetry(alt);
+
+                    if (r0.status === 200 && r0.html && hasContent(r0.html)) return r0;
+
+                }
+
+            }
+
+            const r = await fetchWithRetry(url);
+
+            if (r.status !== 200 || !r.html) return r;
+
+            if (hasContent(r.html)) return r;
+
+            const hosts = extractMirrorHosts(r.html);
+
+            for (const host of hosts) {
+
+                const alt = replaceHost(url, host);
+
+                if (alt === url) continue;
+
+                const r2 = await fetchWithRetry(alt);
+
+                if (r2.status === 200 && r2.html && hasContent(r2.html)) {
+
+                    mirrorHostCache = host;  // 缓存镜像域名
+
+                    log(`🔁 已发现可用镜像站 ${host}，后续页面直接访问加速`);
+
+                    return r2;
+
+                }
+
+            }
+
+            return r;
+
+        }
+
+        // 从页面 HTML 提取「分页链接」（页码数字链接、下一页类链接）
+        function extractPaginationLinks(html, baseUrl) {
+
+            const parser = new DOMParser();
+
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const links = new Set();
+
+            let baseHost = '';
+
+            try { baseHost = new URL(baseUrl).hostname; } catch(e) { return []; }
+
+            doc.querySelectorAll('a[href]').forEach(a => {
+
+                const text = (a.textContent || '').trim();
+
+                const href = a.getAttribute('href') || '';
+
+                if (!href || href.startsWith('javascript:') || href.startsWith('#')) return;
+
+                const isPageNum = /^\d+$/.test(text);
+
+                const isNext = /(下一页|下页|后页|下一篇|next|»|›|＞)/i.test(text);
+
+                if (!isPageNum && !isNext) return;
+
+                try {
+
+                    const abs = new URL(href, baseUrl).href;
+
+                    if (new URL(abs).hostname !== baseHost) return;
+
+                    if (abs === baseUrl) return;
+
+                    links.add(abs);
+
+                } catch(e) {}
+
+            });
+
+            return [...links];
+
+        }
+
+        // 深度抓取一个详情页及其全部分页子页面（BFS + 并发混合：
+        // 支持"下一页"链式分页，同时保持并发加速）
+        async function crawlDetailPages(detailUrl, maxSubPages) {
+
+            const allImages = [];
+
+            const visited = new Set();
+
+            const queue = [];
+
+            let processed = 0;
+
+            const delay = parseInt(delayMsInput.value) || 500;
+
+            const concurrency = 5;
+
+            // 1) 先抓首页，收集首批分页链接
+            const first = await fetchDetailSmart(detailUrl);
+
+            visited.add(detailUrl);
+
+            if (first.status === 200 && first.html) {
+
+                const imgs = await extractFromHTML(first.html, detailUrl);
+
+                allImages.push(...imgs);
+
+                processed++;
+
+                log(`⤵ 子页 1: ${detailUrl}（${imgs.length} 张符合）`);
+
+                const pages = extractPaginationLinks(first.html, detailUrl);
+
+                for (const p of pages) {
+
+                    if (!visited.has(p)) { visited.add(p); queue.push(p); }
+
+                }
+
+            }
+
+            // 2) BFS + 并发：每批并发抓取，每页新发现的"下一页/页码"链接继续入队
+            while (queue.length > 0 && processed < maxSubPages) {
+
+                if (stopRequested) break;
+
+                const batch = queue.splice(0, concurrency);
+
+                const batchResults = await Promise.all(batch.map(async (u) => {
+
+                    processed++;
+
+                    statusMessage.textContent = `子页 ${processed}（并发 ${concurrency}）`;
+
+                    const r = await fetchDetailSmart(u);
+
+                    if (r.status === 200 && r.html) {
+
+                        const imgs = await extractFromHTML(r.html, u);
+
+                        const pages = extractPaginationLinks(r.html, u);
+
+                        return { u, imgs, pages };
+
+                    }
+
+                    log(`⚠️ 子页获取失败: ${u}`, true);
+
+                    return { u, imgs: [], pages: [] };
+
+                }));
+
+                let newPages = 0;
+
+                for (const r of batchResults) {
+
+                    allImages.push(...r.imgs);
+
+                    log(`⤵ 子页 ${r.u}（${r.imgs.length} 张符合）`);
+
+                    for (const p of r.pages) {
+
+                        if (!visited.has(p)) { visited.add(p); queue.push(p); newPages++; }
+
+                    }
+
+                }
+
+                if (newPages > 0 && delay > 0) await new Promise(r2 => setTimeout(r2, delay));
+
+            }
+
+            if (processed > 1) log(`📑 该详情页共抓取 ${processed} 个子页（含分页，并发 ${concurrency}）`);
+
+            return allImages;
+
+        }
+
+        // 列表分页跟随：抓取列表页 1、2、3… 合并所有列表页的封面
+        // 从分页链接文本推断列表总页数（页码数字最大值）
+        function guessTotalPages(html, baseUrl) {
+
+            let max = 0;
+
+            try {
+
+                const parser = new DOMParser();
+
+                const doc = parser.parseFromString(html, 'text/html');
+
+                doc.querySelectorAll('a[href]').forEach(a => {
+
+                    const text = (a.textContent || '').trim();
+
+                    if (/^\d+$/.test(text)) max = Math.max(max, parseInt(text, 10));
+
+                });
+
+            } catch(e) {}
+
+            return max;
+
+        }
+
+        async function crawlListPages(listUrl, maxListPages) {
+
+            const allCoverLinks = [];
+
+            const visited = new Set([listUrl]);
+
+            const queue = [];
+
+            let processed = 0;
+
+            let totalPages = 1;
+
+            const concurrency = 3;
+
+            const delay = parseInt(delayMsInput.value) || 500;
+
+            // 1) 先抓列表第 1 页：获取封面 + 分页链接 + 推断总页数
+            const first = await fetchDetailSmart(listUrl);
+
+            visited.add(listUrl);
+
+            const seenCovers = new Set();  // 按详情页链接去重（跨列表页的重复封面只处理一次）
+
+            if (first.status === 200 && first.html) {
+
+                processed = 1;
+
+                currentPageDisplay.textContent = '列表 1';
+
+                const covers = extractCoverLinks(first.html, listUrl);
+
+                for (const c of covers) {
+
+                    if (seenCovers.has(c.pageUrl)) continue;
+
+                    seenCovers.add(c.pageUrl);
+
+                    allCoverLinks.push(c);
+
+                }
+
+                log(`📃 列表页 1: ${listUrl} → ${covers.length} 个封面（去重后 ${allCoverLinks.length}）`);
+
+                const pages = extractPaginationLinks(first.html, listUrl);
+
+                for (const p of pages) {
+
+                    if (!visited.has(p)) { visited.add(p); queue.push(p); }
+
+                }
+
+                totalPages = guessTotalPages(first.html, listUrl);
+
+                totalPages = Math.max(totalPages, queue.length + 1);
+
+                if (totalPages > 1) log(`📚 列表共 ${totalPages} 页，开始依次抓取…`);
+
+            }
+
+            // 2) 并发抓取剩余列表分页
+            while (queue.length > 0 && processed < maxListPages) {
+
+                if (stopRequested) break;
+
+                const batch = queue.splice(0, concurrency);
+
+                const batchResults = await Promise.all(batch.map(async (u) => {
+
+                    processed++;
+
+                    currentPageDisplay.textContent = `列表 ${processed}/${totalPages}`;
+
+                    statusMessage.textContent = `正在抓列表分页 ${processed}/${totalPages} 页`;
+
+                    const r = await fetchDetailSmart(u);
+
+                    if (r.status === 200 && r.html) {
+
+                        const covers = extractCoverLinks(r.html, listUrl);
+
+                        const pages = extractPaginationLinks(r.html, u);
+
+                        return { u, covers, pages, html: r.html };
+
+                    }
+
+                    return { u, covers: [], pages: [], html: '' };
+
+                }));
+
+                let addedCovers = 0, addedPages = 0;
+
+                for (const r of batchResults) {
+
+                    log(`📃 列表页 ${processed - batchResults.length + batchResults.indexOf(r) + 1}: ${r.u} → ${r.covers.length} 个封面`);
+
+                    for (const c of r.covers) {
+
+                        if (seenCovers.has(c.pageUrl)) continue;
+
+                        seenCovers.add(c.pageUrl);
+
+                        allCoverLinks.push(c);
+
+                        addedCovers++;
+
+                    }
+
+                    for (const p of r.pages) {
+
+                        if (!visited.has(p)) { visited.add(p); queue.push(p); addedPages++; }
+
+                    }
+
+                    // 用各页的页码链接持续校正总页数
+                    const t = guessTotalPages(r.html, listUrl);
+
+                    if (t > totalPages) { totalPages = t; log(`📚 校正：列表共 ${totalPages} 页`); }
+
+                }
+
+                if (addedPages > 0) log(`   ↳ 队列追加 ${addedPages} 个列表分页`);
+
+                if (delay > 0) await new Promise(r2 => setTimeout(r2, delay));
+
+            }
+
+            return allCoverLinks;
+
+        }
+
+        // ---------- 主提取 ----------
+
+                // 解析批量网址：支持换行 / 逗号 / 分号 / 空格分隔，自动去重、补协议
+        function parseUrlList(raw) {
+            const parts = raw.split(/[\n,，;；\s]+/).map(s => s.trim()).filter(Boolean);
+            const seen = new Set();
+            const urls = [];
+            for (let p of parts) {
+                if (!/^https?:\/\//i.test(p)) p = 'https://' + p;
+                try {
+                    const u = new URL(p);
+                    if (u.hostname.includes('.')) {
+                        if (!seen.has(u.href)) { seen.add(u.href); urls.push(u.href); }
+                    }
+                } catch(e) {}
+            }
+            return urls;
+        }
+
+        // 单个网址的解析（按所选模式独立处理，返回该网址的图片数组）
+        async function processOneUrl(rawUrl, mode) {
+            if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) rawUrl = 'https://' + rawUrl;
+            const baseUrl = (mode === 'list') ? rawUrl : cleanBaseUrl(rawUrl);
+            log(`🔧 基础URL: ${baseUrl}`);
+            let pageUrls = [];
+            if (mode === 'auto') {
+                log(`🌐 自动模式：从第1页开始递增直到404`);
+            } else if (mode === 'manual') {
+                const start = parseInt(startPageInput.value) || 1;
+                const end = parseInt(endPageInput.value) || 1;
+                if (start > end) { log('❌ 起始页不能大于结束页', true); return []; }
+                for (let i = start; i <= end; i++) {
+                    const url = i === 1 ? baseUrl : `${baseUrl}/${i}`;
+                    pageUrls.push({ pageNum: i, url });
+                }
+                log(`🌐 手动模式：抓取第 ${start} 到 ${end} 页（共 ${pageUrls.length} 页）`);
+            } else {
+                log(`📚 列表页批量模式：${baseUrl}`);
+            }
+
+            let allImages = [];
+            const seenUrls = new Set();
+            let emptyStreak = 0;
+            const maxPages = 200;
+
+            if (mode === 'auto') {
+                let pageNum = 1;
+                let failedCount = 0;
+                while (pageNum <= maxPages) {
+                    if (stopRequested) {
+                        log(`⏹ 已停止，共抓取 ${pageNum - 1} 页`, true);
+                        break;
+                    }
+                    const pageUrl = pageNum === 1 ? baseUrl : `${baseUrl}/${pageNum}`;
+                    currentPageDisplay.textContent = pageNum;
+                    statusMessage.textContent = `正在抓取 第 ${pageNum} 页`;
+                    log(`📄 尝试第 ${pageNum} 页: ${pageUrl}`);
+                    try {
+                        const result = await fetchHTMLWithStatus(pageUrl);
+                        if (result.status === 404) {
+                            log(`🏁 第 ${pageNum} 页返回404，停止爬取（总页数 = ${pageNum - 1}）`);
+                            break;
+                        }
+                        if (result.error || result.status === 0 || !result.html) {
+                            log(`⚠️ 第 ${pageNum} 页网络错误，重试...`, true);
+                            failedCount++;
+                            if (failedCount > 3) {
+                                log(`❌ 连续失败超过3次，停止爬取`, true);
+                                break;
+                            }
+                            await new Promise(r => setTimeout(r, parseInt(delayMsInput.value) || 500));
+                            continue;
+                        }
+                        const pageImages = await extractFromHTML(result.html, pageUrl);
+                        const newImages = pageImages.filter(img => {
+                            if (seenUrls.has(img.url)) return false;
+                            seenUrls.add(img.url);
+                            return true;
+                        });
+                        allImages = allImages.concat(newImages);
+                        cumulativeCount.textContent = allImages.length;
+                        const newCount = newImages.length;
+                        if (newCount === 0) emptyStreak++; else emptyStreak = 0;
+                        log(`📊 第 ${pageNum} 页：${pageImages.length} 张符合，新增 ${newCount} 张（累计 ${allImages.length} 张，连续空页 ${emptyStreak}）`);
+                        failedCount = 0;
+                        if (emptyStreak >= 3) {
+                            log(`🛑 连续3页无新图片，停止爬取（避免重复抓取）`);
+                            break;
+                        }
+                        pageNum++;
+                        const delay = parseInt(delayMsInput.value) || 500;
+                        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                    } catch(err) {
+                        log(`❌ 第 ${pageNum} 页异常: ${err.message}`, true);
+                        failedCount++;
+                        if (failedCount > 3) break;
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                }
+                if (pageNum > maxPages && !stopRequested) log(`⚠️ 达到最大安全页数 ${maxPages}，停止`, true);
+            } else if (mode === 'manual') {
+                const concurrency = 5;
+                const batches = [];
+                for (let i = 0; i < pageUrls.length; i += concurrency) batches.push(pageUrls.slice(i, i + concurrency));
+                for (const batch of batches) {
+                    const promises = batch.map(async (item) => {
+                        const pUrl = item.url;
+                        const pNum = item.pageNum;
+                        currentPageDisplay.textContent = pNum;
+                        statusMessage.textContent = `正在抓取 ${pUrl}`;
+                        log(`📄 抓取第 ${pNum} 页: ${pUrl}`);
+                        try {
+                            const result = await fetchHTMLWithStatus(pUrl);
+                            if (result.status === 404) { log(`⚠️ 第 ${pNum} 页返回404，跳过`, true); return []; }
+                            if (result.error || !result.html) { log(`⚠️ 第 ${pNum} 页网络错误`, true); return []; }
+                            const images = await extractFromHTML(result.html, pUrl);
+                            log(`📊 第 ${pNum} 页得到 ${images.length} 张符合图片`);
+                            return images;
+                        } catch(err) {
+                            log(`❌ 第 ${pNum} 页异常: ${err.message}`, true);
+                            return [];
+                        }
+                    });
+                    const results = await Promise.all(promises);
+                    for (const imgs of results) {
+                        allImages = allImages.concat(imgs);
+                        cumulativeCount.textContent = allImages.length;
+                    }
+                    const delay = parseInt(delayMsInput.value) || 500;
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                }
+                statusMessage.textContent = `✅ 完成，共 ${pageUrls.length} 页`;
+            } else {
+                // 列表页批量模式：封面 → 详情页
+                const listResult = await fetchHTMLWithStatus(baseUrl);
+                if (listResult.status === 404) {
+                    log('❌ 列表页返回 404', true);
+                } else if (listResult.error || !listResult.html) {
+                    log('❌ 列表页获取失败', true);
+                } else {
+                    const coverLinks = await crawlListPages(baseUrl, 500);
+                    log(`📚 共发现 ${coverLinks.length} 个封面链接（含列表分页）`);
+                    if (!coverLinks.length) log('⚠️ 未找到带图片的封面链接（需要 <a><img></a> 结构）', true);
+                    let itemIndex = 0;
+                    const processedDetails = new Set();
+                    for (const item of coverLinks) {
+                        if (processedDetails.has(item.pageUrl)) continue;
+                        processedDetails.add(item.pageUrl);
+                        if (stopRequested) {
+                            log(`⏹ 已停止，已处理 ${itemIndex} / ${coverLinks.length} 个`, true);
+                            break;
+                        }
+                        itemIndex++;
+                        currentPageDisplay.textContent = `${itemIndex}/${coverLinks.length}`;
+                        statusMessage.textContent = `正在提取 ${itemIndex}/${coverLinks.length}：${item.pageUrl}`;
+                        log(`📄 [${itemIndex}/${coverLinks.length}] ${item.pageUrl}`);
+                        try {
+                            const pageImages = await crawlDetailPages(item.pageUrl, 20);
+                            const newImages = pageImages.filter(img => {
+                                if (seenUrls.has(img.url)) return false;
+                                seenUrls.add(img.url);
+                                return true;
+                            });
+                            allImages = allImages.concat(newImages);
+                            cumulativeCount.textContent = allImages.length;
+                            log(`📊 详情页 ${itemIndex}/${coverLinks.length} 累计 ${pageImages.length} 张，新增 ${newImages.length} 张（总累计 ${allImages.length} 张）`);
+                        } catch(err) {
+                            log(`❌ 第 ${itemIndex} 个详情页异常: ${err.message}`, true);
+                        }
+                        const delay = parseInt(delayMsInput.value) || 500;
+                        if (delay > 0 && itemIndex < coverLinks.length) await new Promise(r => setTimeout(r, delay));
+                    }
+                    if (!stopRequested) statusMessage.textContent = `✅ 完成，共处理 ${itemIndex} 个详情页`;
+                }
+            }
+            return allImages;
+        }
+
+        async function handleExtract() {
+            if (isCrawling) { log('⏳ 正在爬取...', true); return; }
+            clearResults();
+            zipCountDisplay.textContent = '0';
+            let zipPart = 0;
+
+            // 1) 解析批量网址
+            const rawList = urlInput.value.trim();
+            if (!rawList) { log('❌ 请输入网址（可一次粘贴多个，每行一个）', true); return; }
+            const urls = parseUrlList(rawList);
+            if (urls.length === 0) { log('❌ 未识别到有效网址', true); return; }
+            if (urls.length > 1) log(`🔗 共识别 ${urls.length} 个网址，将逐个解析下载`);
+
+            const mode = crawlModeSelect.value;
+            const zipEveryN = Math.max(1, parseInt(zipEveryNInput.value) || 5);
+            const total = urls.length;
+
+            savePrefs();
+
+            isCrawling = true;
+            stopRequested = false;
+            stopBtn.disabled = false;
+            stopBtn.textContent = '⏹ 停止';
+            crawlStatus.classList.remove('hidden');
+            urlProgress.textContent = `0/${total}`;
+            statusMessage.textContent = `🌐 共 ${total} 个网址，开始处理...`;
+
+            let allImages = [];
+            let batchImages = [];
+            let batchUrls = 0;
+
+            for (let i = 0; i < total; i++) {
+                if (stopRequested) {
+                    log(`⏹ 已停止，完成 ${i}/${total} 个网址`, true);
+                    statusMessage.textContent = '⏹ 已停止';
+                    break;
+                }
+                urlProgress.textContent = `${i + 1}/${total}`;
+                statusMessage.textContent = `🌐 正在处理第 ${i + 1}/${total} 个网址`;
+                log(`🔗 [${i + 1}/${total}] 开始处理: ${urls[i]}`);
+
+                const imgs = await processOneUrl(urls[i], mode);
+
+                allImages = allImages.concat(imgs);
+                cumulativeCount.textContent = allImages.length;
+                batchImages = batchImages.concat(imgs);
+                batchUrls++;
+
+                log(`✔ [${i + 1}/${total}] 完成：${imgs.length} 张（累计 ${allImages.length} 张）`);
+
+                // 2) 每 N 个网址自动打包一个 ZIP（最后不足 N 个也打包）
+                const isLast = (i === total - 1) || stopRequested;
+                if (batchUrls >= zipEveryN || isLast) {
+                    if (batchImages.length > 0) {
+                        zipPart++;
+                        zipCountDisplay.textContent = String(zipPart);
+                        const label = (total > 1) ? `第${zipPart}批（${batchUrls}个网址）` : `全部（${batchUrls}个网址）`;
+                        await downloadZIP(batchImages, label);
+                        log(`📦 已打包第 ${zipPart} 批：${batchUrls} 个网址 / ${batchImages.length} 张图片`);
+                    } else {
+                        log(`⚠️ 第 ${zipPart + 1} 批无符合图片，跳过打包`);
+                    }
+                    batchImages = [];
+                    batchUrls = 0;
+                    if (stopRequested) break;
+                }
+            }
+
+            isCrawling = false;
+            stopBtn.textContent = '⏹ 停止';
+            stopBtn.disabled = false;
+            crawlStatus.classList.add('hidden');
+
+            // 3) 去重并展示全部图片
+            const seen = new Set();
+            const unique = [];
+            for (const img of allImages) {
+                if (!seen.has(img.url)) { seen.add(img.url); unique.push(img); }
+            }
+            log(`🔄 去重后共 ${unique.length} 张图片`);
+            displayImages(unique);
+            if (total > 1) log(`🏁 全部完成：${total} 个网址，生成 ${zipPart} 个ZIP`);
+        }
+
+        // ---------- 下载 ZIP ----------
+
+        async function downloadZIP(imageList, label) {
+
+            const images = imageList || allExtractedImages;
+
+            if (!images.length) {
+
+                showToast('❌ 没有图片可下载', '请先提取图片', 3000, true);
+
+                return;
+
+            }
+
+            try {
+
+                showToast('⏳ 正在打包 ZIP...', `共 ${images.length} 张图片，请稍候`, 0);
+
+                const resp = await fetch(API_BASE + '/download', {
+
+                    method: 'POST',
+
+                    headers: { 'Content-Type': 'application/json' },
+
+                    body: JSON.stringify({ urls: images.map(img => img.url) })
+
+                });
+
+                if (!resp.ok) {
+
+                    const e = await resp.json().catch(() => ({}));
+
+                    throw new Error(e.error || ('下载失败（HTTP ' + resp.status + '）'));
+
+                }
+
+                const blob = await resp.blob();
+
+                const zippedCount = parseInt(resp.headers.get('X-Zip-Count') || '', 10);
+
+                const realCount = (zippedCount > 0) ? zippedCount : images.length;
+
+                const _stamp = new Date().toISOString().slice(0,10);
+                const _suffix = label ? `_${label.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '')}` : '';
+                saveAs(blob, `images_${_stamp}${_suffix}.zip`);
+
+                showToast(`✅ ZIP 下载成功！共 ${realCount} 张图片`, (label ? `${label} · ` : '') + (zippedCount > 0 && zippedCount < images.length ? `⚠️ ${images.length - zippedCount} 张下载失败未打包` : '已按尺寸规格分文件夹保存'), 6000);
+
+                log(`📦 ${label ? label + ' ' : ''}ZIP 下载完成，实际打包 ${realCount} 张（请求 ${images.length} 张）`);
+
+            } catch (err) {
+
+                log(`❌ ZIP 下载失败: ${err.message}`, true);
+
+                showToast('❌ ZIP 下载失败', err.message, 5000, true);
+
+            }
+
+        }
+
+        // 当前选中的规格对应的图片
+        function getSelectedImages() {
+
+            return allExtractedImages.filter(img => selectedDims.has(`${img.width}x${img.height}`));
+
+        }
+
+        // ---------- 复制图片链接 ----------
+
+        function copyLinks() {
+
+            if (!allExtractedImages.length) {
+
+                showToast('❌ 没有图片链接可复制', '请先提取图片', 3000, true);
+
+                return;
+
+            }
+
+            let text = '';
+
+            allExtractedImages.forEach(img => {
+
+                text += `${img.width}×${img.height} | ${img.sizeKB}KB | ${img.url}\n`;
+
+            });
+
+            navigator.clipboard.writeText(text).then(() => {
+
+                showToast('✅ 已复制链接', `${allExtractedImages.length} 张图片信息已复制到剪贴板`, 4000);
+
+                log('📋 已复制所有图片链接');
+
+            }).catch(() => {
+
+                const textarea = document.createElement('textarea');
+
+                textarea.value = text;
+
+                document.body.appendChild(textarea);
+
+                textarea.select();
+
+                document.execCommand('copy');
+
+                document.body.removeChild(textarea);
+
+                showToast('✅ 已复制链接', `${allExtractedImages.length} 张图片信息已复制`, 4000);
+
+            });
+
+        }
+
+        // ---------- 事件绑定 ----------
+
+        extractBtn.addEventListener('click', handleExtract);
+
+        clearBtn.addEventListener('click', function() { clearResults(); log('🗑️ 已清空结果'); });
+
+        zipBtn.addEventListener('click', () => downloadZIP(allExtractedImages, '全部'));
+
+        zipSelBtn.addEventListener('click', () => downloadZIP(getSelectedImages(), '所选规格'));
+
+        copyBtn.addEventListener('click', copyLinks);
+
+        urlInput.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') extractBtn.click(); });
+
+        log('🚀 工具已启动。提取后点击"下载ZIP压缩包"即可。');
+
+    })();
+
+</script>
+
+</body>
+
+</html>
+<script>
+
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "image-extractor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "多网址图片提取器（Vercel Serverless 版）：抓网页、图片代理、ZIP 打包",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  }
+}
