@@ -198,7 +198,7 @@
 
         <span id="listHint" style="display:none;font-size:12px;color:#64748b;">📚 输入包含封面的列表页网址，自动逐个抓取每个封面进入的详情页图片</span>
 
-        <label>延迟间隔 <input type="number" id="delayMs" value="500" min="0" max="2000"> 毫秒</label>
+        <label>延迟间隔 <input type="number" id="delayMs" value="100" min="0" max="2000"> 毫秒</label>
         <label>每 <input type="number" id="zipEveryN" value="5" min="1" max="100" title="每处理完 N 个网址自动打包一个ZIP"> 个网址打包1个ZIP</label>
 
     </div>
@@ -793,7 +793,7 @@
 
             let processed = 0;
 
-            const batchSize = 10;
+            const batchSize = 25;
 
             for (let i = 0; i < uniqueUrls.length; i += batchSize) {
 
@@ -953,7 +953,39 @@
 
         }
 
-        function cleanBaseUrl(url) { return url.replace(/\/\d+\/?$/, '') || url; }
+        // 批量抓取：一次请求抓多页（云函数内部并行），调用次数减少 N 倍
+        async function fetchHTMLsWithStatus(urls) {
+            const results = urls.map(url => ({ url, status: 0, html: null, error: true }));
+            if (!urls.length) return results;
+            try {
+                const resp = await fetch(API_BASE + '/fetch_html', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urls }),
+                    signal: AbortSignal.timeout(90000)
+                });
+                if (resp.ok) {
+                    const d = await resp.json();
+                    if (d && Array.isArray(d.batch)) {
+                        const byUrl = new Map();
+                        for (const item of d.batch) {
+                            if (item && item.url) {
+                                byUrl.set(item.url, { url: item.url, status: item.status, html: item.html, error: !!item.error });
+                            }
+                        }
+                        for (let i = 0; i < results.length; i++) {
+                            const hit = byUrl.get(urls[i]);
+                            if (hit) results[i] = hit;
+                        }
+                    } else if (d && d.status !== undefined) {
+                        results[0] = { url: urls[0], status: d.status, html: d.html, error: false };
+                    }
+                }
+            } catch(e) {}
+            return results;
+        }
+
+        async function cleanBaseUrl(url) { return url.replace(/\/\d+\/?$/, '') || url; }
 
         // 常见无关域名黑名单（防止把导航/社交外链当封面）
         const LINK_BLACKLIST = ['facebook.com','twitter.com','x.com','instagram.com','youtube.com','t.co','baidu.com','weibo.com','google.com','linkedin.com','pinterest.com','reddit.com','telegram.me','t.me','whatsapp.com','qq.com','weixin.qq.com','microsoft.com','apple.com','amazon.com','adobe.com','example.com','example.org','w3.org','github.com','medium.com'];
@@ -1197,7 +1229,7 @@
 
             const delay = parseInt(delayMsInput.value) || 500;
 
-            const concurrency = 5;
+            const concurrency = 8;
 
             // 1) 先抓首页，收集首批分页链接
             const first = await fetchDetailSmart(detailUrl);
@@ -1464,16 +1496,98 @@
             log(`🔧 基础URL: ${baseUrl}`);
             let pageUrls = [];
             if (mode === 'auto') {
-                log(`🌐 自动模式：从第1页开始递增直到404`);
-            } else if (mode === 'manual') {
-                const start = parseInt(startPageInput.value) || 1;
-                const end = parseInt(endPageInput.value) || 1;
-                if (start > end) { log('❌ 起始页不能大于结束页', true); return []; }
-                for (let i = start; i <= end; i++) {
-                    const url = i === 1 ? baseUrl : `${baseUrl}/${i}`;
-                    pageUrls.push({ pageNum: i, url });
+                let pageNum = 1;
+                let failedCount = 0;
+                const BATCH = 8;
+                while (pageNum <= maxPages) {
+                    if (stopRequested) {
+                        log(`⏹ 已停止，共抓取 ${pageNum - 1} 页`, true);
+                        break;
+                    }
+                    // 生成本批 URL（第 N 批：pageNum ~ pageNum+7）
+                    const batchUrls = [];
+                    for (let i = 0; i < BATCH; i++) {
+                        const p = pageNum + i;
+                        if (p > maxPages) break;
+                        batchUrls.push({ pageNum: p, url: p === 1 ? baseUrl : `${baseUrl}/${p}` });
+                    }
+                    currentPageDisplay.textContent = pageNum;
+                    statusMessage.textContent = `正在抓取 第 ${batchUrls[0].pageNum}-${batchUrls[batchUrls.length - 1].pageNum} 页`;
+                    log(`📄 批量抓取第 ${batchUrls[0].pageNum}-${batchUrls[batchUrls.length - 1].pageNum} 页（${batchUrls.length} 页/批）`);
+                    const results = await fetchHTMLsWithStatus(batchUrls.map(b => b.url));
+                    let stopped = false;
+                    for (let rIdx = 0; rIdx < results.length; rIdx++) {
+                        const item = results[rIdx];
+                        const meta = batchUrls[rIdx] || { pageNum: pageNum + rIdx };
+                        const p = meta.pageNum;
+                        if (stopRequested) break;
+                        if (item.status === 404) {
+                            log(`🏁 第 ${p} 页返回404，停止爬取（总页数 = ${p - 1}）`);
+                            stopped = true;
+                            break;
+                        }
+                        if (item.error || item.status === 0 || !item.html) {
+                            log(`⚠️ 第 ${p} 页网络错误，重试...`, true);
+                            failedCount++;
+                            if (failedCount > 3) {
+                                log(`❌ 连续失败超过3次，停止爬取`, true);
+                                stopped = true;
+                                break;
+                            }
+                            continue;
+                        }
+                        failedCount = 0;
+                        const pageImages = await extractFromHTML(item.html, item.url);
+                        const newImages = pageImages.filter(img => {
+                            if (seenUrls.has(img.url)) return false;
+                            seenUrls.add(img.url);
+                            return true;
+                        });
+                        allImages = allImages.concat(newImages);
+                        cumulativeCount.textContent = allImages.length;
+                        const newCount = newImages.length;
+                        if (newCount === 0) emptyStreak++; else emptyStreak = 0;
+                        log(`📊 第 ${p} 页：${pageImages.length} 张符合，新增 ${newCount} 张（累计 ${allImages.length} 张，连续空页 ${emptyStreak}）`);
+                        if (emptyStreak >= 3) {
+                            log(`🛑 连续3页无新图片，停止爬取（避免重复抓取）`);
+                            stopped = true;
+                            break;
+                        }
+                    }
+                    if (stopped) break;
+                    pageNum += BATCH;
+                    const delay = parseInt(delayMsInput.value) || 100;
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
                 }
-                log(`🌐 手动模式：抓取第 ${start} 到 ${end} 页（共 ${pageUrls.length} 页）`);
+                if (pageNum > maxPages && !stopRequested) log(`⚠️ 达到最大安全页数 ${maxPages}，停止`, true);
+            } else if (mode === 'manual') {            } else if (mode === 'manual') {
+                const BATCH = 8;
+                for (let i = 0; i < pageUrls.length; i += BATCH) {
+                    const batch = pageUrls.slice(i, i + BATCH);
+                    currentPageDisplay.textContent = batch[0].pageNum;
+                    statusMessage.textContent = `正在抓取 第 ${batch[0].pageNum}-${batch[batch.length - 1].pageNum} 页`;
+                    log(`📄 批量抓取第 ${batch[0].pageNum}-${batch[batch.length - 1].pageNum} 页（${batch.length} 页/批）`);
+                    const results = await fetchHTMLsWithStatus(batch.map(b => b.url));
+                    for (let j = 0; j < results.length; j++) {
+                        const item = results[j];
+                        const meta = batch[j];
+                        if (!meta) continue;
+                        const p = meta.pageNum;
+                        if (item.status === 404) { log(`⚠️ 第 ${p} 页返回404，跳过`, true); continue; }
+                        if (item.error || !item.html) { log(`⚠️ 第 ${p} 页网络错误`, true); continue; }
+                        try {
+                            const images = await extractFromHTML(item.html, item.url);
+                            log(`📊 第 ${p} 页得到 ${images.length} 张符合图片`);
+                            allImages = allImages.concat(images);
+                            cumulativeCount.textContent = allImages.length;
+                        } catch(err) {
+                            log(`❌ 第 ${p} 页异常: ${err.message}`, true);
+                        }
+                    }
+                    const delay = parseInt(delayMsInput.value) || 100;
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                }
+                statusMessage.textContent = `✅ 完成，共 ${pageUrls.length} 页`;
             } else {
                 log(`📚 列表页批量模式：${baseUrl}`);
             }
@@ -1539,7 +1653,7 @@
                 }
                 if (pageNum > maxPages && !stopRequested) log(`⚠️ 达到最大安全页数 ${maxPages}，停止`, true);
             } else if (mode === 'manual') {
-                const concurrency = 5;
+                const concurrency = 8;
                 const batches = [];
                 for (let i = 0; i < pageUrls.length; i += concurrency) batches.push(pageUrls.slice(i, i + concurrency));
                 for (const batch of batches) {
@@ -1703,63 +1817,52 @@
         // ---------- 下载 ZIP ----------
 
         async function downloadZIP(imageList, label) {
-
             const images = imageList || allExtractedImages;
-
             if (!images.length) {
-
                 showToast('❌ 没有图片可下载', '请先提取图片', 3000, true);
-
                 return;
-
             }
+            // 按预估大小自动分批（网关响应体上限 6MB，安全阈值 4.5MB）
+            const MAX_ZIP_BYTES = 3 * 1024 * 1024;
+            const batches = [];
+            let cur = [], curSize = 0;
+            for (const img of images) {
+                const sz = (img && img.blob && img.blob.size) || 200 * 1024;
+                if (cur.length && curSize + sz > MAX_ZIP_BYTES) {
+                    batches.push(cur); cur = []; curSize = 0;
+                }
+                cur.push(img); curSize += sz;
+            }
+            if (cur.length) batches.push(cur);
 
             try {
-
-                showToast('⏳ 正在打包 ZIP...', `共 ${images.length} 张图片，请稍候`, 0);
-
-                const resp = await fetch(API_BASE + '/download', {
-
-                    method: 'POST',
-
-                    headers: { 'Content-Type': 'application/json' },
-
-                    body: JSON.stringify({ urls: images.map(img => img.url) })
-
-                });
-
-                if (!resp.ok) {
-
-                    const e = await resp.json().catch(() => ({}));
-
-                    throw new Error(e.error || ('下载失败（HTTP ' + resp.status + '）'));
-
+                showToast('⏳ 正在打包 ZIP...', `共 ${images.length} 张图片，分 ${batches.length} 批下载`, 0);
+                for (let b = 0; b < batches.length; b++) {
+                    const batch = batches[b];
+                    const resp = await fetch(API_BASE + '/download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ urls: batch.map(img => img.url) })
+                    });
+                    if (!resp.ok) {
+                        const e = await resp.json().catch(() => ({}));
+                        throw new Error(e.error || ('下载失败（HTTP ' + resp.status + '）'));
+                    }
+                    const blob = await resp.blob();
+                    const zippedCount = parseInt(resp.headers.get('X-Zip-Count') || '', 10);
+                    const realCount = (zippedCount > 0) ? zippedCount : batch.length;
+                    const _stamp = new Date().toISOString().slice(0,10);
+                    const _suffix = label ? `_${label.replace(/[^一-龥a-zA-Z0-9]/g, '')}` : '';
+                    const part = batches.length > 1 ? `_第${b + 1}批` : '';
+                    saveAs(blob, `images_${_stamp}${_suffix}${part}.zip`);
+                    log(`📦 第 ${b + 1}/${batches.length} 批 ZIP 下载完成：${realCount} 张（请求 ${batch.length} 张）`);
                 }
-
-                const blob = await resp.blob();
-
-                const zippedCount = parseInt(resp.headers.get('X-Zip-Count') || '', 10);
-
-                const realCount = (zippedCount > 0) ? zippedCount : images.length;
-
-                const _stamp = new Date().toISOString().slice(0,10);
-                const _suffix = label ? `_${label.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '')}` : '';
-                saveAs(blob, `images_${_stamp}${_suffix}.zip`);
-
-                showToast(`✅ ZIP 下载成功！共 ${realCount} 张图片`, (label ? `${label} · ` : '') + (zippedCount > 0 && zippedCount < images.length ? `⚠️ ${images.length - zippedCount} 张下载失败未打包` : '已按尺寸规格分文件夹保存'), 6000);
-
-                log(`📦 ${label ? label + ' ' : ''}ZIP 下载完成，实际打包 ${realCount} 张（请求 ${images.length} 张）`);
-
+                showToast(`✅ ZIP 下载成功！共 ${images.length} 张图片`, (label ? `${label} · ` : '') + `分 ${batches.length} 批完成`, 6000);
             } catch (err) {
-
                 log(`❌ ZIP 下载失败: ${err.message}`, true);
-
                 showToast('❌ ZIP 下载失败', err.message, 5000, true);
-
             }
-
         }
-
         // 当前选中的规格对应的图片
         function getSelectedImages() {
 
