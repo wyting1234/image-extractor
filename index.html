@@ -199,7 +199,7 @@
         <span id="listHint" style="display:none;font-size:12px;color:#64748b;">📚 输入包含封面的列表页网址，自动逐个抓取每个封面进入的详情页图片</span>
 
         <label>延迟间隔 <input type="number" id="delayMs" value="100" min="0" max="2000"> 毫秒</label>
-        <label>每 <input type="number" id="zipEveryN" value="5" min="1" max="100" title="每处理完 N 个网址自动打包一个ZIP"> 个网址打包1个ZIP</label>
+        <label>每 <select id="zipEveryN" title="每累计 N 张图片自动下载一个 ZIP（选「不限」则全部结束后统一打包）"><option value="20">20</option><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="300">300</option><option value="500">500</option><option value="0">不限（结束时打包）</option></select> 张图片自动下载1个ZIP</label>
 
     </div>
 
@@ -412,7 +412,10 @@
                 if (prefs.startPage) startPageInput.value = prefs.startPage;
 
                 if (prefs.endPage) endPageInput.value = prefs.endPage;
-                if (prefs.zipEveryN) zipEveryNInput.value = prefs.zipEveryN;
+                if (prefs.zipEveryN !== undefined && prefs.zipEveryN !== null) {
+                    const _v = String(prefs.zipEveryN);
+                    if (Array.from(zipEveryNInput.options).some(o => o.value === _v)) zipEveryNInput.value = _v;
+                }
 
             } catch(e) {}
 
@@ -874,6 +877,7 @@
         async function fetchHTMLWithStatus(url) {
 
             // 优先使用本站后端代理（服务端抓取，绕 CORS）
+            // 注意：云函数对单 URL 也返回 { batch: [ {...} ] } 协议，必须按 batch 解析
             try {
 
                 const resp = await fetch(API_BASE + '/fetch_html', {
@@ -892,11 +896,34 @@
 
                     const d = await resp.json();
 
-                    if (d.status === 404) return { status: 404, html: null };
+                    // 兼容两种协议：{batch:[...]}（当前）与 {status, html}（历史）
+                    let item = d;
 
-                    if (d.status === 200 && d.html && d.html.length > 50) {
+                    if (d && Array.isArray(d.batch)) {
 
-                        return { status: 200, html: d.html };
+                        item = d.batch.find(x => x && x.url === url) || d.batch[0] || null;
+
+                    }
+
+                    if (item) {
+
+                        if (item.status === 404) return { status: 404, html: null };
+
+                        if (item.status === 200 && item.html && item.html.length > 50) {
+
+                            return {
+
+                                status: 200,
+
+                                html: item.html,
+
+                                redirectedTo: item.redirectedTo || '',
+
+                                shellFollowed: !!item.shellFollowed
+
+                            };
+
+                        }
 
                     }
 
@@ -904,57 +931,44 @@
 
             } catch(e) {}
 
-            // 回退：公共 CORS 代理列表
+            // 回退：公共 CORS 代理（并行竞速 + 6 秒超时，避免用户长时间空等）
             const proxyList = [
 
                 `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
 
                 `https://corsproxy.io/?${encodeURIComponent(url)}`,
 
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-
-                `https://cors-anywhere.herokuapp.com/${url}`,
-
-                `https://proxy.cors.sh/${url}`
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
 
             ];
 
-            for (const proxy of proxyList) {
+            try {
 
-                try {
+                const racers = proxyList.map(async (proxy) => {
 
-                    const resp = await fetch(proxy, {
-
-                        headers: { 'User-Agent': 'Mozilla/5.0' },
-
-                        signal: AbortSignal.timeout(10000)
-
-                    });
+                    const resp = await fetch(proxy, { signal: AbortSignal.timeout(6000) });
 
                     if (resp.status === 404) return { status: 404, html: null };
 
-                    if (resp.ok) {
+                    if (!resp.ok) throw new Error('http ' + resp.status);
 
-                        const text = await resp.text();
+                    const text = await resp.text();
 
-                        if (text.length > 50 && !text.includes('error')) {
+                    if (text.length > 50 && !text.startsWith('error')) return { status: 200, html: text };
 
-                            return { status: 200, html: text };
+                    throw new Error('empty');
 
-                        }
+                });
 
-                    }
+                return await Promise.any(racers);
 
-                } catch(e) {}
-
-            }
+            } catch(e) {}
 
             return { status: 0, html: null, error: true };
 
         }
 
-        // 批量抓取：一次请求抓多页（云函数内部并行），调用次数减少 N 倍
-        async function fetchHTMLsWithStatus(urls) {
+                async function fetchHTMLsWithStatus(urls) {
             const results = urls.map(url => ({ url, status: 0, html: null, error: true }));
             if (!urls.length) return results;
             try {
@@ -1107,6 +1121,8 @@
                 const r = await fetchHTMLWithStatus(url);
 
                 if (r.status === 200 && r.html) return r;
+
+                if (r.status === 404) return r;   // 404 无需重试
 
                 last = r;
 
@@ -1744,7 +1760,10 @@
             if (urls.length > 1) log(`🔗 共识别 ${urls.length} 个网址，将逐个解析下载`);
 
             const mode = crawlModeSelect.value;
-            const zipEveryN = Math.max(1, parseInt(zipEveryNInput.value) || 5);
+            // 每累计 N 张图片自动下载一个 ZIP；0 = 不限（全部结束后统一打包）
+            const _zipEveryNRaw = parseInt(zipEveryNInput.value, 10);
+            const zipEveryN = isNaN(_zipEveryNRaw) ? 100 : _zipEveryNRaw;
+            const flushLimit = zipEveryN > 0 ? zipEveryN : Infinity;
             const total = urls.length;
 
             savePrefs();
@@ -1780,30 +1799,32 @@
 
                 log(`✔ [${i + 1}/${total}] 完成：${imgs.length} 张（累计 ${allImages.length} 张）`);
 
-                // 2) 每 N 个网址自动打包一个 ZIP（最后不足 N 个也打包）
+                // 2) 每累计 N 张图片自动下载一个 ZIP（N=0 → 全部结束后一次打包）
                 const isLast = (i === total - 1) || stopRequested;
-                if (batchUrls >= zipEveryN || isLast) {
+                while (batchImages.length >= flushLimit) {
+                    const chunk = batchImages.splice(0, flushLimit);
+                    zipPart++;
+                    zipCountDisplay.textContent = String(zipPart);
+                    const label = (total > 1) ? `第${zipPart}批（${chunk.length}张）` : `全部（${chunk.length}张）`;
+                    await downloadZIP(chunk, label);
+                    log(`📦 已自动下载第 ${zipPart} 批：${chunk.length} 张图片（阈值：每 ${zipEveryN} 张）`);
+                }
+                if (isLast) {
                     if (batchImages.length > 0) {
                         zipPart++;
                         zipCountDisplay.textContent = String(zipPart);
-                        const label = (total > 1) ? `第${zipPart}批（${batchUrls}个网址）` : `全部（${batchUrls}个网址）`;
+                        const label = (total > 1) ? `第${zipPart}批（${batchImages.length}张）` : `全部（${batchImages.length}张）`;
                         await downloadZIP(batchImages, label);
-                        log(`📦 已打包第 ${zipPart} 批：${batchUrls} 个网址 / ${batchImages.length} 张图片`);
-                    } else {
-                        log(`⚠️ 第 ${zipPart + 1} 批无符合图片，跳过打包`);
+                        log(`📦 已下载最后第 ${zipPart} 批：${batchImages.length} 张图片`);
+                    } else if (zipPart === 0) {
+                        log(`⚠️ 无符合图片，跳过打包`);
                     }
                     batchImages = [];
-                    batchUrls = 0;
                     if (stopRequested) break;
                 }
             }
 
-            isCrawling = false;
-            stopBtn.textContent = '⏹ 停止';
-            stopBtn.disabled = false;
-            crawlStatus.classList.add('hidden');
-
-            // 3) 去重并展示全部图片
+                        // 3) 去重并展示全部图片
             const seen = new Set();
             const unique = [];
             for (const img of allImages) {
